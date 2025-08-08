@@ -1,0 +1,10 @@
+{
+  "name": "Drummer Metronome + Setlists",
+  "short_name": "Metronome",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1222",
+  "theme_color": "#111a4d",
+  "icons": []
+}
