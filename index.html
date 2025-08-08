@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Metronome + Setlists</title>
+  <style>
+    :root{ --bg:#0f1222; --panel:#161a33; --muted:#2a2f57; --text:#e9ecff; --accent:#7aa2ff; --ok:#7affb0; --warn:#ffd37a; --danger:#ff7a7a; }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--text)}
+    header{padding:16px 20px; background:linear-gradient(90deg,var(--panel),#1a1f3f); position:sticky; top:0; z-index:2; box-shadow:0 2px 10px #0005}
+    header h1{margin:0; font-size:18px; letter-spacing:.5px}
+    main{display:grid; gap:16px; grid-template-columns: 1.2fr .8fr; padding:16px; max-width:1200px; margin:0 auto}
+    @media (max-width:950px){main{grid-template-columns:1fr}}
+    .card{background:var(--panel); border:1px solid var(--muted); border-radius:14px; padding:14px}
+    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    label{font-size:12px; opacity:.9}
+    input[type="number"], input[type="text"], select, textarea{ background:#0e1130; color:var(--text); border:1px solid var(--muted); border-radius:10px; padding:8px 10px; outline:none; min-height:38px }
+    input[type="range"]{width:180px}
+    button{background:#10143a; color:var(--text); border:1px solid var(--muted); border-radius:12px; padding:10px 12px; cursor:pointer}
+    button.primary{border-color:var(--accent); background:#111a4d}
+    button.success{border-color:var(--ok);} button.warn{border-color:var(--warn)} button.danger{border-color:var(--danger)}
+    button:disabled{opacity:.5; cursor:not-allowed}
+    .pulse{width:120px; aspect-ratio:1; border-radius:50%; margin:10px auto; background:#0b0f29; border:2px solid var(--muted); position:relative}
+    .pulse::after{content:""; position:absolute; inset:10px; border-radius:50%; border:3px solid var(--accent); opacity:.1; transition:all .08s ease}
+    .pulse.active::after{inset:0; opacity:.9}
+    .grid{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+    .stack{display:flex; flex-direction:column; gap:8px}
+    .split{display:flex; gap:10px; align-items:center}
+    .tight{gap:6px}
+    .subtitle{opacity:.8; font-size:13px; margin:6px 0 2px}
+    .list{border:1px solid var(--muted); border-radius:12px; overflow:hidden}
+    .list-item{display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--muted)}
+    .list-item:last-child{border-bottom:none}
+    .list-item.selected{background:#0c1030; border-color:var(--accent)}
+    .list-item.acted{background:#10204a; border-color:var(--ok); box-shadow:inset 0 0 0 1px var(--ok);}
+    .list-item .blink{animation:blink 0.2s 2}
+    @keyframes blink{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}
+    .grow{flex:1}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; opacity:.8}
+    .note{font-size:12px; opacity:.85}
+    .kbd{border:1px solid var(--muted); border-radius:8px; padding:2px 6px; font-size:12px; background:#0c1030}
+    .search-row input{width:100%}
+    .pill{padding:2px 8px; border:1px solid var(--muted); border-radius:999px; font-size:12px; opacity:.9}
+    /* Make the active setlist name much more visible in Setlist Detail */
+    #setDetailTitle{font-size:clamp(18px,2.8vw,26px); font-weight:800; letter-spacing:.2px; padding:8px 12px; border-radius:12px; border-color:var(--accent); background:linear-gradient(180deg, rgba(122,162,255,.18), rgba(122,162,255,.08)); color:var(--text);} 
+    @media (max-width:950px){ #setDetailTitle{font-size:clamp(17px,4.5vw,24px);} }
+    /* Queue UI enhancements */
+    .queueWrap{display:flex; flex-direction:column; gap:6px; align-items:flex-end; min-width:260px}
+    .queue-title{font-weight:700; line-height:1.2; font-size:clamp(18px,3.2vw,28px); max-width:420px; text-align:right}
+    .queue-sub{font-size:12px; opacity:.85}
+    .queue-controls{display:flex; gap:10px; justify-content:flex-end}
+    @media (max-width:950px){
+      .queueWrap{align-items:stretch}
+      .queue-title{text-align:left}
+      .queue-controls{justify-content:flex-start}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎵 Metronome + Multi‑Setlists (Local, Free, Offline-capable*)</h1>
+  </header>
+  <main>
+    <section class="card" id="metronomeCard">
+      <div class="grid">
+        <div class="stack">
+          <div class="row"><div class="pulse" id="pulse"></div></div>
+          <div class="row tight">
+            <label for="bpm">BPM</label>
+            <input id="bpm" type="number" min="30" max="300" value="120" />
+            <input id="bpmRange" type="range" min="30" max="300" value="120" />
+            <button id="tap" title="Tap Tempo (T)">TAP</button>
+          </div>
+          <div class="row tight">
+            <label>Time Sig</label>
+            <input id="num" type="number" min="1" max="15" value="4" style="width:70px"/>
+            <select id="denom">
+              <option>2</option><option selected>4</option><option>8</option><option>16</option>
+            </select>
+            <label>Subdivision</label>
+            <select id="subdiv">
+              <option value="1">none</option>
+              <option value="2">eighths</option>
+              <option value="3">triplets</option>
+              <option value="4" selected>sixteenths</option>
+            </select>
+            <label>Count‑in</label>
+            <select id="countIn">
+              <option value="0">off</option>
+              <option value="1" selected>1 bar</option>
+              <option value="2">2 bars</option>
+            </select>
+          </div>
+          <div class="row tight">
+            <label>Volume</label>
+            <input id="volume" type="range" min="0" max="1" step="0.01" value="0.6"/>
+            <label>Accent 1</label>
+            <input id="accent" type="checkbox" checked />
+            <label>Visual Flash</label>
+            <input id="flash" type="checkbox" checked />
+          </div>
+          <div class="row">
+            <button id="start" class="primary">▶ Start (Space)</button>
+            <button id="stop">■ Stop</button>
+            <span class="grow"></span>
+            <div class="queueWrap">
+              <div id="queueSong" class="queue-title">—</div>
+              <div class="queue-sub"><span class="pill" id="queueInfo">Queue: –</span></div>
+              <div class="queue-controls">
+                <button id="prevInQueue">⟵ Prev</button>
+                <button id="nextInQueue">Next ⟶</button>
+              </div>
+            </div>
+          </div>
+          <div class="note">Hotkeys: <span class="kbd">Space</span> start/stop, <span class="kbd">T</span> tap, <span class="kbd">↑/↓</span> BPM ±1, <span class="kbd">Shift+↑/↓</span> BPM ±5.</div>
+        </div>
+        <div class="stack">
+          <div class="subtitle">Song</div>
+          <div class="grid">
+            <div class="stack">
+              <label>Title</label>
+              <input id="songTitle" type="text" placeholder="e.g., Backbeat Groove"/>
+            </div>
+            <div class="stack">
+              <label>Notes</label>
+              <input id="songNotes" type="text" placeholder="e.g., 2‑bar count‑in, big fill"/>
+            </div>
+            <div class="stack">
+              <label>BPM</label>
+              <input id="songBpm" type="number" min="30" max="300" value="120"/>
+            </div>
+            <div class="stack">
+              <label>Time Sig</label>
+              <div class="split">
+                <input id="songNum" type="number" min="1" max="15" value="4" style="width:70px"/>
+                <select id="songDenom"><option>2</option><option selected>4</option><option>8</option><option>16</option></select>
+              </div>
+            </div>
+            <div class="stack">
+              <label>Subdivision</label>
+              <select id="songSubdiv"><option value="1">none</option><option value="2">eighths</option><option value="3">triplets</option><option value="4" selected>sixteenths</option></select>
+            </div>
+          </div>
+          <div class="row">
+            <button id="saveSong" class="success">Save New</button>
+            <button id="updateSong" class="warn" disabled>Update</button>
+            <button id="deleteSong" class="danger" disabled>Delete</button>
+            <span class="grow"></span>
+            <button id="loadToMetro">Load to Metronome</button>
+            <button id="addToSet">Add to Setlist</button>
+          </div>
+          <div class="subtitle">Saved Songs</div>
+          <div class="row search-row"><input id="songSearch" type="text" class="grow" placeholder="Search by title, notes, or BPM…"/></div>
+          <div class="row"><button id="createSet2" class="success">New Setlist</button><span class="note">Creates an empty set in the Setlists panel.</span></div>
+          <div class="list" id="songList"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="setlistsCard">
+      <div class="stack">
+        <div class="subtitle">Setlists</div>
+        <div class="row">
+          <button id="createSet" class="success">New Setlist</button>
+          <span class="grow"></span>
+          <button id="loadSetToQueue" class="primary">Load Setlist to Queue</button>
+        </div>
+        <div class="grid">
+          <div class="stack">
+            <div class="subtitle">All Setlists</div>
+            <div class="list" id="setlistsList"></div>
+          </div>
+          <div class="stack">
+            <div class="subtitle">Setlist Detail</div>
+            <div class="row">
+              <span id="setDetailTitle" class="pill">No setlist selected</span>
+              <span class="grow"></span>
+              <button id="renameSet">Rename</button>
+              <button id="deleteSet" class="danger">Delete</button>
+              <button id="clearSetItems" class="danger">Clear Songs</button>
+            </div>
+            <div class="list" id="setDetailItems"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="libraryCard">
+      <div class="stack">
+        <div class="subtitle">Library — Export / Import</div>
+        <div class="row">
+          <button id="exportBtn" class="primary">Export JSON</button>
+          <input type="file" id="importFile" accept="application/json"/>
+          <button id="runTests">Run Diagnostics</button>
+        </div>
+        <textarea id="exportArea" class="mono" rows="8" placeholder="Exported data will appear here…"></textarea>
+        <textarea id="diagArea" class="mono" rows="6" placeholder="Diagnostics output…"></textarea>
+        <div class="note">Tip: Keep this JSON in Google Drive so you can restore on any device using the Import button.</div>
+      </div>
+    </section>
+
+    <!-- Confirm modal (for Delete and Clear) -->
+    <div id="confirmModal" class="modal" aria-hidden="true" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0008;z-index:21;">
+      <div class="card" style="width:min(520px,92vw);box-shadow:0 10px 40px #000a">
+        <div class="stack">
+          <div class="subtitle" id="confirmTitle">Please Confirm</div>
+          <div id="confirmMessage" class="note">Are you sure?</div>
+          <div class="row">
+            <span class="grow"></span>
+            <button id="confirmCancel">Cancel</button>
+            <button id="confirmOk" class="danger">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+  <footer>*Works great offline after loading once. To use fully offline as an app, host it (e.g., GitHub Pages) and add to Home Screen.</footer>
+
+  <!-- New Setlist modal (works on Android) -->
+  <div id="setModal" class="modal" aria-hidden="true" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0008;z-index:20;">
+    <div class="card" style="width:min(520px,92vw);box-shadow:0 10px 40px #000a">
+      <div class="stack">
+        <div class="subtitle">Create New Setlist</div>
+        <input id="setModalInput" type="text" placeholder="e.g., Friday Gig – 1st Set"/>
+        <div class="row">
+          <span class="grow"></span>
+          <button id="setModalCancel">Cancel</button>
+          <button id="setModalCreate" class="success">Create & Open</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Setlist modal (works on Android) -->
+  <div id="renameModal" class="modal" aria-hidden="true" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0008;z-index:20;">
+    <div class="card" style="width:min(520px,92vw);box-shadow:0 10px 40px #000a">
+      <div class="stack">
+        <div class="subtitle">Rename Setlist</div>
+        <input id="renameInput" type="text" placeholder="New setlist name"/>
+        <div class="row">
+          <span class="grow"></span>
+          <button id="renameCancel">Cancel</button>
+          <button id="renameSave" class="success">Save Name</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // --- State & Persistence ---
+  const SKEY_SONGS = 'drum_metro_songs_v1';
+  const SKEY_SET_OLD = 'drum_metro_set_v1'; // backward compat
+  const SKEY_SETS = 'drum_metro_setlists_v1';
+
+  let songs = JSON.parse(localStorage.getItem(SKEY_SONGS) || '[]');
+  let setlists = JSON.parse(localStorage.getItem(SKEY_SETS) || 'null');
+
+  // migrate older single-set storage to multi-setlists
+  (function migrate(){
+    if(!setlists){
+      const old = JSON.parse(localStorage.getItem(SKEY_SET_OLD) || '[]');
+      setlists = [{name:'Default', items: Array.isArray(old)? old : []}];
+      localStorage.setItem(SKEY_SETS, JSON.stringify(setlists));
+    }
+  })();
+
+  let activeSetIndex = 0; // which setlist is active
+  let queue = []; // current queue of song IDs
+  let queueIdx = -1;
+
+  let selectedSongId = null;
+
+  function saveState(){
+    localStorage.setItem(SKEY_SONGS, JSON.stringify(songs));
+    localStorage.setItem(SKEY_SETS, JSON.stringify(setlists));
+  }
+
+  // --- UI Helpers ---
+  const el = id => document.getElementById(id);
+  function h(tag, attrs={}, ...children){
+    const e = document.createElement(tag);
+    for (const [k,v] of Object.entries(attrs||{})){
+      if(k==='class') e.className=v; else if(k==='text') e.textContent=v;
+      else if(k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+      else e.setAttribute(k,v);
+    }
+    for (const c of children){ if(c==null) continue; e.appendChild(typeof c==='string'?document.createTextNode(c):c); }
+    return e;
+  }
+
+  function labelSubdiv(v){ return {1:'none',2:'8ths',3:'triplets',4:'16ths'}[Number(v)]||'none'; }
+
+  // Visual feedback helpers for Load/Add actions
+  function tempButtonState(btn, text, ms=900){ const old=btn.textContent; btn.textContent=text; btn.disabled=true; setTimeout(()=>{ btn.textContent=old; btn.disabled=false; }, ms); }
+  function flashRowById(id){ const row = document.getElementById(id); if(!row) return; row.classList.add('acted'); setTimeout(()=> row.classList.remove('acted'), 700); }
+  function handleLoadClick(e, idx){
+    loadSongToMetro(idx); Queue.setSingle(idx);
+    tempButtonState(e.currentTarget, 'Loaded'); flashRowById('songrow-'+idx);
+  }
+  function handleAddClick(e, idx){ addSongToActiveSet(idx); tempButtonState(e.currentTarget, 'Added'); flashRowById('songrow-'+idx); }
+  function handleSetLoadClick(e, i){ const set = setlists[activeSetIndex]; if(!set) return; const songId = set.items[i]; loadSongToMetro(songId); Queue.setSingle(songId); tempButtonState(e.currentTarget, 'Loaded'); flashRowById('setrow-'+i); }
+
+  // --- Songs UI ---
+  function renderSongs(){
+    const list = el('songList'); list.innerHTML='';
+    if(!songs.length){ list.appendChild(h('div',{class:'list-item'}, h('div',{class:'note'},'No songs yet.'))); return; }
+
+    const q = (el('songSearch')?.value || '').toLowerCase().trim();
+    const items = songs.map((s,idx)=>({s,idx})).filter(({s})=>{
+      if(!q) return true; const t=(s.title||'').toLowerCase(); const n=(s.notes||'').toLowerCase();
+      return t.includes(q) || n.includes(q) || String(s.bpm).includes(q);
+    });
+
+    if(q && items.length===0){ list.appendChild(h('div',{class:'list-item'}, h('div',{class:'note'},'No matches.'))); return; }
+
+    items.forEach(({s,idx})=>{
+      const isSel = idx===selectedSongId;
+      const selectBtn = isSel ? h('button',{disabled:true}, 'Selected') : h('button',{onClick:()=>selectSong(idx)}, 'Select');
+      const item = h('div',{class:'list-item'+(isSel?' selected':''), id:`songrow-${idx}`},
+        h('div',{class:'grow'}, h('div',{class:'title'}, s.title||`Untitled ${idx+1}`), h('div',{class:'note'}, `${s.bpm} BPM • ${s.num}/${s.denom} • subdiv ${labelSubdiv(s.subdiv)} ${s.notes? ' • '+s.notes:''}`)),
+        selectBtn,
+        h('button',{onClick:(e)=>handleLoadClick(e, idx)}, 'Load'),
+        h('button',{onClick:(e)=>handleAddClick(e, idx)}, 'Add ➕')
+      );
+      list.appendChild(item);
+    });
+  }
+
+  // --- Multiple Setlists UI ---
+  function renderSetlistsList(){
+    const list = el('setlistsList'); list.innerHTML='';
+    if(!setlists.length){ list.appendChild(h('div',{class:'list-item'}, h('div',{class:'note'},'No setlists yet. Click “New Setlist”.'))); return; }
+    setlists.forEach((set,i)=>{
+      const count = set.items.length;
+      const item = h('div',{class:'list-item'+(i===activeSetIndex?' selected':'')},
+        h('div',{class:'grow'}, h('div',{class:'title'}, set.name), h('div',{class:'note'}, `${count} song${count!==1?'s':''}`)),
+        h('button',{onClick:()=>openSetlist(i)}, 'Open'),
+        h('button',{onClick:()=>renameSetlist(i)}, 'Rename'),
+        h('button',{onClick:()=>openDeleteConfirm(i), class:'danger'}, 'Delete')
+      );
+      list.appendChild(item);
+    });
+  }
+
+  function renderSetDetail(){
+    const title = el('setDetailTitle');
+    const list = el('setDetailItems'); list.innerHTML='';
+    const set = setlists[activeSetIndex];
+    if(!set){ title.textContent = 'No setlist selected'; return; }
+    title.textContent = `Selected: ${set.name}`;
+    if(!set.items.length){ list.appendChild(h('div',{class:'list-item'}, h('div',{class:'note'},'Empty setlist. Use “Add to Setlist” from Saved Songs.'))); return; }
+    set.items.forEach((songId,i)=>{
+      const s = songs[songId]; if(!s) return;
+      const item = h('div',{class:'list-item', id:`setrow-${i}`},
+        h('div',{class:'grow'}, h('div',{class:'title'}, `${i+1}. ${s.title}`), h('div',{class:'note'}, `${s.bpm} BPM • ${s.num}/${s.denom} • ${labelSubdiv(s.subdiv)}`)),
+        h('button',{onClick:()=>moveSetItem(i,-1)}, '↑'),
+        h('button',{onClick:()=>moveSetItem(i,1)}, '↓'),
+        h('button',{onClick:(e)=>handleSetLoadClick(e, i)}, 'Load'),
+        h('button',{onClick:()=>removeSetItem(i)}, 'Remove')
+      );
+      list.appendChild(item);
+    });
+  }
+
+  function openSetlist(i){ activeSetIndex = i; renderSetlistsList(); renderSetDetail(); Queue.refresh(); }
+  function renameSetlist(i){ openRenameModal(i); }
+  function deleteSetlist(i){ if(!confirm('Delete this setlist?')) return; if(setlists.length<=1){ alert('Keep at least one setlist.'); return; } setlists.splice(i,1); if(activeSetIndex>=setlists.length){ activeSetIndex = Math.max(0,setlists.length-1); } saveState(); renderSetlistsList(); renderSetDetail(); Queue.refresh(); }
+
+  function addSongToActiveSet(songId){ const set = setlists[activeSetIndex]; if(!set){ alert('Open a setlist first.'); return; } set.items.push(songId); saveState(); renderSetDetail(); renderSetlistsList(); }
+  function moveSetItem(i,delta){ const set=setlists[activeSetIndex]; if(!set) return; const j=i+delta; if(j<0||j>=set.items.length) return; [set.items[i],set.items[j]]=[set.items[j],set.items[i]]; saveState(); renderSetDetail(); }
+  function removeSetItem(i){ const set=setlists[activeSetIndex]; if(!set) return; set.items.splice(i,1); saveState(); renderSetDetail(); }
+
+  // --- Queue (load multiple songs for quick switching) ---
+  const Queue = {
+    set(ids=[], idx=0){
+      queue = (ids||[]).slice();
+      queueIdx = queue.length ? Math.max(0, Math.min(idx, queue.length-1)) : -1;
+      this.refresh();
+      if(queueIdx>=0) loadSongToMetro(queue[queueIdx]);
+    },
+    setSingle(id){ this.set([id], 0); },
+    showFormNow(){
+      const s = readSongForm();
+      const t = el('queueSong'); const i = el('queueInfo');
+      if(t) t.textContent = s.title || '—';
+      if(i) i.textContent = 'Queue: –';
+    },
+    next(){ if(queueIdx<0 || queueIdx>=queue.length-1) return; queueIdx++; loadSongToMetro(queue[queueIdx]); this.refresh(); },
+    prev(){ if(queueIdx<=0) return; queueIdx--; loadSongToMetro(queue[queueIdx]); this.refresh(); },
+    refresh(){
+      const i = el('queueInfo'); const t = el('queueSong');
+      if(queueIdx<0){ if(i) i.textContent='Queue: –'; if(t) t.textContent='—'; return; }
+      const s = songs[queue[queueIdx]]; if(i) i.textContent = `Queue: ${queueIdx+1}/${queue.length}`; if(t) t.textContent = s? s.title : 'Unknown';
+    }
+  };
+
+  function loadSetlistToQueue(){
+    const set = setlists[activeSetIndex]; if(!set){ alert('Open a setlist first.'); return; }
+    Queue.set(set.items, 0);
+  }
+
+  // --- Common helpers ---
+  function selectSong(idx){ selectedSongId = idx; const s = songs[idx];
+    el('songTitle').value = s.title||''; el('songNotes').value=s.notes||''; el('songBpm').value=s.bpm;
+    el('songNum').value=s.num; el('songDenom').value=s.denom; el('songSubdiv').value=s.subdiv;
+    el('updateSong').disabled=false; el('deleteSong').disabled=false;
+    renderSongs(); renderSetDetail();
+  }
+  function clearSongForm(){ selectedSongId=null; ['songTitle','songNotes','songBpm','songNum','songDenom','songSubdiv'].forEach(()=>{}); el('updateSong').disabled=true; el('deleteSong').disabled=true; }
+  function loadSongToMetro(idx){
+    const s = (typeof idx==='number')? songs[idx] : readSongForm();
+    if(!s) return null;
+    el('bpm').value=s.bpm; el('bpmRange').value=s.bpm; el('num').value=s.num; el('denom').value=s.denom; el('subdiv').value=s.subdiv;
+    return s;
+  }
+  function readSongForm(){ const title = el('songTitle').value.trim()||'Untitled'; const notes = el('songNotes').value.trim(); const bpm = clamp(parseInt(el('songBpm').value||120,10),30,300); const num = clamp(parseInt(el('songNum').value||4,10),1,15); const denom = parseInt(el('songDenom').value,10); const subdiv = parseInt(el('songSubdiv').value,10); return {title, notes, bpm, num, denom, subdiv}; }
+  function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+
+  // --- CRUD Songs ---
+  el('saveSong').addEventListener('click',()=>{ const s = readSongForm(); songs.push(s); saveState(); renderSongs(); clearSongForm(); });
+  el('updateSong').addEventListener('click',()=>{ if(selectedSongId==null) return; songs[selectedSongId]=readSongForm(); saveState(); renderSongs(); renderSetDetail(); });
+  el('deleteSong').addEventListener('click',()=>{ if(selectedSongId==null) return; songs.splice(selectedSongId,1); // fix references in setlists
+    setlists = setlists.map(set=>({name:set.name, items:set.items.filter(id=>id!==selectedSongId).map(id=> id>selectedSongId? id-1 : id)}));
+    saveState(); renderSongs(); renderSetDetail(); clearSongForm(); });
+  el('loadToMetro').addEventListener('click',(e)=>{
+    if(selectedSongId!=null){ loadSongToMetro(selectedSongId); Queue.setSingle(selectedSongId); }
+    else { loadSongToMetro(); Queue.showFormNow(); }
+    if(e && e.currentTarget) tempButtonState(e.currentTarget,'Loaded');
+  });
+  el('addToSet').addEventListener('click',(e)=>{
+    let id = selectedSongId;
+    if(id==null){
+      // No selection: save current form as a new song, then add it to the active setlist
+      const s = readSongForm();
+      songs.push(s); id = songs.length-1; saveState(); renderSongs();
+    }
+    addSongToActiveSet(id);
+    if(e && e.currentTarget) tempButtonState(e.currentTarget,'Added');
+  });
+
+  // internal helper to create a setlist; if switchActive=true, it becomes active and opens
+  function createSetlistSilently(name, switchActive=false){
+    if(!name) return false;
+    setlists.push({name:String(name).trim(), items:[]});
+    if(switchActive){ activeSetIndex = setlists.length-1; }
+    saveState(); renderSetlistsList(); renderSetDetail();
+    if(switchActive){ openSetlist(activeSetIndex); }
+    return true;
+  }
+
+  // Helper: create new setlist (shared by buttons)
+  function createNewSetlist(){
+    openSetModal(); // use custom modal (Android-safe)
+  }
+
+  // --- Setlists: controls ---
+  el('createSet').addEventListener('click', ()=> createNewSetlist());
+  el('renameSet').addEventListener('click',()=>{ if(activeSetIndex==null){ alert('Open a setlist first.'); return;} renameSetlist(activeSetIndex); });
+  el('deleteSet').addEventListener('click',()=>{ if(activeSetIndex==null){ alert('Open a setlist first.'); return;} openDeleteConfirm(activeSetIndex); });
+  el('clearSetItems').addEventListener('click',()=>{ const set=setlists[activeSetIndex]; if(!set){ alert('Open a setlist first.'); return;} openClearConfirm(activeSetIndex); });
+  el('loadSetToQueue').addEventListener('click', loadSetlistToQueue);
+  const createSetBtn2 = el('createSet2'); if(createSetBtn2){ createSetBtn2.addEventListener('click', ()=> createNewSetlist()); }
+
+  // --- New Setlist Modal ---
+  const modal = el('setModal');
+  const modalInput = el('setModalInput');
+  const modalCreate = el('setModalCreate');
+  const modalCancel = el('setModalCancel');
+
+  function openSetModal(){ if(!modal) return; modal.style.display='flex'; modal.setAttribute('aria-hidden','false'); setTimeout(()=> modalInput && modalInput.focus(), 0); }
+  function closeSetModal(){ if(!modal) return; modal.style.display='none'; modal.setAttribute('aria-hidden','true'); if(modalInput) modalInput.value=''; }
+  function confirmSetModal(){ if(!modalInput) return; const raw = modalInput.value || ''; const name = raw.trim() || 'New Set'; createSetlistSilently(name, /*switchActive=*/true); closeSetModal(); }
+
+  if(modalCreate) modalCreate.addEventListener('click', confirmSetModal);
+  if(modalCancel) modalCancel.addEventListener('click', closeSetModal);
+  if(modal) modal.addEventListener('click', (e)=>{ if(e.target===modal) closeSetModal(); });
+  if(modalInput) modalInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmSetModal(); if(e.key==='Escape') closeSetModal(); });
+
+  // --- Rename Modal ---
+  const rModal = el('renameModal');
+  const rInput = el('renameInput');
+  const rSave = el('renameSave');
+  const rCancel = el('renameCancel');
+  let renameIndex = null;
+
+  function openRenameModal(index){
+    if(index==null || !setlists[index]) return;
+    renameIndex = index;
+    if(rInput) rInput.value = setlists[index].name || '';
+    if(rModal){ rModal.style.display='flex'; rModal.setAttribute('aria-hidden','false'); setTimeout(()=> rInput && rInput.focus(),0); }
+  }
+  function closeRenameModal(){ if(rModal){ rModal.style.display='none'; rModal.setAttribute('aria-hidden','true'); } renameIndex = null; }
+  function confirmRenameModal(){
+    if(renameIndex==null) { closeRenameModal(); return; }
+    const raw = (rInput && rInput.value) || '';
+    const name = raw.trim();
+    if(!name){ closeRenameModal(); return; }
+    setlists[renameIndex].name = name;
+    saveState(); renderSetlistsList(); renderSetDetail();
+    closeRenameModal();
+  }
+  if(rSave) rSave.addEventListener('click', confirmRenameModal);
+  if(rCancel) rCancel.addEventListener('click', closeRenameModal);
+  if(rModal) rModal.addEventListener('click', (e)=>{ if(e.target===rModal) closeRenameModal(); });
+  if(rInput) rInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmRenameModal(); if(e.key==='Escape') closeRenameModal(); });
+
+  // --- Confirm Modal (Delete / Clear) ---
+  const cModal = el('confirmModal');
+  const cTitle = el('confirmTitle');
+  const cMsg = el('confirmMessage');
+  const cOk = el('confirmOk');
+  const cCancel = el('confirmCancel');
+
+  let confirmAction = null; // {type:'delete-set'|'clear-set', index:number}
+
+  function openConfirm({title='Please Confirm', message='Are you sure?', okLabel='OK', dangerous=false, action=null}){
+    if(!cModal) return;
+    cTitle.textContent = title; cMsg.textContent = message; cOk.textContent = okLabel;
+    cOk.className = dangerous? 'danger' : '';
+    confirmAction = action;
+    cModal.style.display='flex'; cModal.setAttribute('aria-hidden','false');
+  }
+  function closeConfirm(){ if(!cModal) return; cModal.style.display='none'; cModal.setAttribute('aria-hidden','true'); confirmAction=null; }
+
+  function openDeleteConfirm(index){
+    if(setlists.length<=1){
+      openConfirm({ title:'Cannot delete', message:'You must keep at least one setlist.', okLabel:'OK', dangerous:false, action:null });
+      return;
+    }
+    const name = (setlists[index] && setlists[index].name) || 'this setlist';
+    openConfirm({ title:'Delete Setlist', message:`Delete “${name}”? This cannot be undone.`, okLabel:'Delete', dangerous:true, action:{type:'delete-set', index} });
+  }
+  function openClearConfirm(index){
+    const name = (setlists[index] && setlists[index].name) || 'this setlist';
+    openConfirm({ title:'Clear Songs', message:`Remove all songs from “${name}”? (Songs remain in your Library)`, okLabel:'Clear', dangerous:true, action:{type:'clear-set', index} });
+  }
+
+  if(cOk) cOk.addEventListener('click', ()=>{
+    if(!confirmAction){ closeConfirm(); return; }
+    if(confirmAction.type==='delete-set'){
+      const i = confirmAction.index;
+      if(setlists.length<=1){ closeConfirm(); return; }
+      setlists.splice(i,1);
+      if(activeSetIndex>=setlists.length){ activeSetIndex = Math.max(0,setlists.length-1); }
+      saveState(); renderSetlistsList(); renderSetDetail(); Queue.refresh();
+    } else if(confirmAction.type==='clear-set'){
+      const i = confirmAction.index; const set = setlists[i]; if(set){ set.items = []; saveState(); renderSetDetail(); renderSetlistsList(); }
+    }
+    closeConfirm();
+  });
+  if(cCancel) cCancel.addEventListener('click', closeConfirm);
+  if(cModal) cModal.addEventListener('click', (e)=>{ if(e.target===cModal) closeConfirm(); });
+
+  // Close modals on Escape
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape'){
+      closeSetModal();
+      closeRenameModal();
+      closeConfirm();
+    }
+  });
+
+  // --- Export / Import (includes multi-setlists) ---
+  el('exportBtn').addEventListener('click',()=>{
+    const data = {songs, setlists, exportedAt:new Date().toISOString()};
+    const text = JSON.stringify(data,null,2); el('exportArea').value = text;
+    const a = document.createElement('a'); a.download='metronome_data.json'; a.href=URL.createObjectURL(new Blob([text],{type:'application/json'})); a.click();
+  });
+  el('importFile').addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return; const text = await f.text();
+    try{ const data = JSON.parse(text);
+      if(Array.isArray(data.songs) && Array.isArray(data.setlists)){
+        songs=data.songs; setlists=data.setlists; activeSetIndex=0; saveState(); renderSongs(); renderSetlistsList(); renderSetDetail(); alert('Import complete.');
+      } else if(Array.isArray(data.songs) && Array.isArray(data.setlist)) { // old shape
+        songs=data.songs; setlists=[{name:'Imported', items:data.setlist}]; activeSetIndex=0; saveState(); renderSongs(); renderSetlistsList(); renderSetDetail(); alert('Imported legacy setlist.');
+      } else { alert('Invalid file.'); }
+    }catch(err){ alert('Import failed: '+err.message); }
+    e.target.value='';
+  });
+
+  // --- Diagnostics (basic tests) ---
+  function runDiagnostics(){
+    const out = [];
+    try { out.push('[TEST] songs array exists: ' + (Array.isArray(songs))); } catch(e){ out.push('[FAIL] songs array error: '+e.message); }
+    try { createNewSetlist.name && out.push('[TEST] createNewSetlist exists: true'); } catch(e){ out.push('[FAIL] createNewSetlist missing: '+e.message); }
+    try { renderSetlistsList(); renderSetDetail(); out.push('[TEST] render setlist views ran'); } catch(e){ out.push('[FAIL] render setlist views error: '+e.message); }
+
+    // Test: create & auto-open setlist
+    try {
+      const beforeLen = setlists.length;
+      createSetlistSilently('Diagnostics Set', true);
+      out.push('[TEST] create + auto-open: ' + (setlists.length===beforeLen+1 && activeSetIndex===setlists.length-1));
+    } catch(e){ out.push('[FAIL] createSetlistSilently auto-open: '+e.message); }
+
+    // Test: add a temporary song (if needed), add to opened set, then clean up
+    try {
+      let madeTempSong = false;
+      let tempSongIndex = songs.findIndex(s=> s && s.title==='__TEMP_DIAG_SONG__');
+      if(tempSongIndex===-1){
+        songs.push({title:'__TEMP_DIAG_SONG__', notes:'temp', bpm:120, num:4, denom:4, subdiv:4});
+        tempSongIndex = songs.length-1; madeTempSong = true; saveState();
+      }
+      const set = setlists[activeSetIndex];
+      const beforeCount = set.items.length;
+      addSongToActiveSet(tempSongIndex);
+      out.push('[TEST] add to opened set: ' + (set.items.length === beforeCount + 1));
+      // cleanup: remove the just-added song ref
+      set.items = set.items.filter(id=> id!==tempSongIndex);
+      if(madeTempSong){ songs.pop(); }
+      saveState(); renderSetDetail();
+      out.push('[CLEANUP] restored set and songs');
+    } catch(e){ out.push('[WARN] add-to-set/cleanup: '+e.message); }
+
+    // Test: queue load & title update
+    try {
+      // ensure at least one song
+      if(!songs.length){ songs.push({title:'__TEMP_FOR_QUEUE__', notes:'', bpm:100, num:4, denom:4, subdiv:4}); saveState(); }
+      // ensure active set has first song
+      if(!setlists[activeSetIndex].items.includes(0)){ setlists[activeSetIndex].items.push(0); saveState(); }
+      loadSetlistToQueue();
+      const titleNow = (el('queueSong')||{}).textContent || '';
+      out.push('[TEST] queue title non-empty: ' + (titleNow && titleNow !== '—'));
+    } catch(e){ out.push('[WARN] queue title test: '+e.message); }
+
+    // Extra tests for Load to Metronome / Add to Set behavior with no selection
+    try {
+      // Set a specific BPM in the form and ensure loadToMetro() with no selection pulls from form
+      el('songBpm').value = 137; el('songNum').value = 7; el('songDenom').value = 8; el('songSubdiv').value = 2;
+      loadSongToMetro();
+      const ok = Number(el('bpm').value)===137 && Number(el('num').value)===7 && Number(el('denom').value)===8 && Number(el('subdiv').value)===2;
+      out.push('[TEST] loadToMetronome (no selection) reads form: ' + ok);
+    } catch(e){ out.push('[WARN] loadToMetronome form test: '+e.message); }
+
+    try {
+      // Ensure Add to Set with no selection saves the form as a new song and adds it
+      const beforeSongs = songs.length; const beforeItems = setlists[activeSetIndex].items.length;
+      const sIdxBefore = songs.length;
+      const s = readSongForm(); // current form
+      songs.push({...s, title:'__TEMP_ADDTOSET__'}); const newId = songs.length-1; saveState();
+      // simulate action like the button now does when nothing selected
+      selectedSongId = null; addSongToActiveSet(newId);
+      const added = (songs.length===beforeSongs+1) && (setlists[activeSetIndex].items.length===beforeItems+1);
+      out.push('[TEST] addToSet (no selection) saves & adds: ' + added);
+      // cleanup
+      setlists[activeSetIndex].items = setlists[activeSetIndex].items.filter(id=> id!==newId);
+      songs.pop(); saveState(); renderSongs();
+      out.push('[CLEANUP] addToSet temp song removed');
+    } catch(e){ out.push('[WARN] addToSet no-selection test: '+e.message); }
+
+    el('diagArea').value = out.join('\n');
+  }
+  el('runTests').addEventListener('click', runDiagnostics);
+
+  // --- Metronome Engine (WebAudio scheduler) ---
+  let audioCtx = null; let nextNoteTime = 0; let currentBeat = 0; let currentSub = 0; let isRunning=false; let schedulerTimer=null; let countInBeats=0;
+  const lookahead = 25; // ms; scheduler interval
+  const scheduleAhead = 0.1; // seconds; how far ahead to schedule clicks
+
+  function initAudio(){ if(!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }}
+
+  function nextNote(){
+    const bpm = Number(el('bpm').value); const sub = Number(el('subdiv').value); const secondsPerBeat = 60.0 / bpm; const step = secondsPerBeat / sub;
+    nextNoteTime += step; currentSub = (currentSub + 1) % sub; if(currentSub===0){ currentBeat = (currentBeat + 1) % Number(el('num').value); }
+  }
+
+  function scheduleClick(time){
+    const gain = (audioCtx.createGain());
+    const osc = audioCtx.createOscillator();
+    const isDownbeat = (currentSub===0 && currentBeat===0);
+    const accented = el('accent').checked && isDownbeat;
+    const isCountIn = countInBeats>0;
+
+    const baseVol = Number(el('volume').value);
+    const vol = baseVol * (isCountIn? 0.6 : 1);
+    gain.gain.setValueAtTime(vol, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(accented? 1400 : 900, time);
+
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(time); osc.stop(time + 0.05);
+
+    if(el('flash').checked){
+      setTimeout(()=>{ const p = el('pulse'); p.classList.add('active'); setTimeout(()=>p.classList.remove('active'), 60); }, Math.max(0, (time - audioCtx.currentTime) * 1000));
+    }
+  }
+
+  function scheduler(){
+    while(nextNoteTime < audioCtx.currentTime + scheduleAhead){
+      scheduleClick(nextNoteTime);
+      if(countInBeats>0){ countInBeats--; }
+      nextNote();
+    }
+  }
+
+  function start(){
+    initAudio(); if(isRunning) return; isRunning=true;
+    currentBeat=0; currentSub=0; nextNoteTime = audioCtx.currentTime + 0.06; // slight delay
+    const bars = Number(el('countIn').value); const sub = Number(el('subdiv').value);
+    countInBeats = bars * Number(el('num').value) * sub;
+    schedulerTimer = setInterval(scheduler, lookahead);
+  }
+  function stop(){ if(!isRunning) return; clearInterval(schedulerTimer); schedulerTimer=null; isRunning=false; }
+
+  // Controls binding
+  el('start').addEventListener('click', start);
+  el('stop').addEventListener('click', stop);
+  el('bpmRange').addEventListener('input', e=>{ el('bpm').value=e.target.value; });
+  el('bpm').addEventListener('input', e=>{ const v=clamp(parseInt(e.target.value||120,10),30,300); el('bpmRange').value=v; });
+
+  // Tap tempo
+  let tapTimes=[]; const TAP_RESET_MS=1500;
+  function tap(){ const now = performance.now(); tapTimes = tapTimes.filter(t=> now - t < TAP_RESET_MS); tapTimes.push(now);
+    if(tapTimes.length>=2){ const intervals = []; for(let i=1;i<tapTimes.length;i++){ intervals.push(tapTimes[i]-tapTimes[i-1]); }
+      const avg = intervals.reduce((a,b)=>a+b,0)/intervals.length; const bpm = clamp(Math.round(60000/avg),30,300); el('bpm').value=bpm; el('bpmRange').value=bpm; el('songBpm').value=bpm; }
+  }
+  el('tap').addEventListener('click', tap);
+
+  // Keyboard shortcuts (desktop convenience)
+  document.addEventListener('keydown', (e)=>{
+    if(e.target && (/input|textarea|select/i).test(e.target.tagName)) return;
+    if(e.code==='Space'){ e.preventDefault(); isRunning? stop(): start(); }
+    if(e.key==='t' || e.key==='T'){ tap(); }
+    if(e.key==='ArrowUp'){ const step = e.shiftKey?5:1; const v = clamp(parseInt(el('bpm').value,10)+step,30,300); el('bpm').value=v; el('bpmRange').value=v; }
+    if(e.key==='ArrowDown'){ const step = e.shiftKey?5:1; const v = clamp(parseInt(el('bpm').value,10)-step,30,300); el('bpm').value=v; el('bpmRange').value=v; }
+    if(e.key==='ArrowRight'){ Queue.next(); }
+    if(e.key==='ArrowLeft'){ Queue.prev(); }
+  });
+
+  // Live search & queue buttons
+  const searchEl = el('songSearch'); if(searchEl){ searchEl.addEventListener('input', renderSongs); }
+  el('nextInQueue').addEventListener('click', ()=>Queue.next());
+  el('prevInQueue').addEventListener('click', ()=>Queue.prev());
+
+  function refreshAll(){ renderSongs(); renderSetlistsList(); renderSetDetail(); Queue.refresh(); }
+
+  // Initial render
+  refreshAll();
+  </script>
+</body>
+</html>
